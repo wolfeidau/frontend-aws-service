@@ -17,6 +17,6 @@ RUN apt update && apt install -y ca-certificates \
     && apt-get clean
 
 WORKDIR /app
-COPY --from=builder /app/service .
+COPY --from=builder /app/service /service
 
 ENTRYPOINT /service

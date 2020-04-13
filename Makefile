@@ -9,6 +9,9 @@ APP_NAME ?= frontend-aws-service
 bin/reflex:
 	env GOBIN=$$PWD/bin GO111MODULE=on go install github.com/cespare/reflex
 
+bin/hey:
+	env GOBIN=$$PWD/bin GO111MODULE=on go install github.com/rakyll/hey
+
 watch: bin/reflex
 	bin/reflex -R '^static/' -r '(.go$$)|(.html$$)' -s -- go run cmd/echo-aws-service/main.go
 .PHONY: watch
@@ -111,10 +114,31 @@ build-docker-container:
 
 push-docker-container:
 	@echo "--- create and push container to ecr"
-	$(eval REPOSITORY_URI = $(aws cloudformation list-exports --query 'Exports[?Name==`frontend-aws-service-echo-service-ecr-dev-master-ECRArn`].Value' --output text))
-	@aws ecr get-login-password | docker login --username AWS --password-stdin $(REPOSITORY_URI)
+	$(eval REPOSITORY_URI=$(shell aws cloudformation list-exports --query 'Exports[?Name==`$(APP_NAME)-echo-service-ecr-$(STAGE)-$(BRANCH)-ECRHostname`].Value' --output text))
+	aws ecr get-login-password | docker login --username AWS --password-stdin $(REPOSITORY_URI)
 	@echo "Tagging image: ${REPOSITORY_URI}:$(VERSION)_$(GIT_HASH)"
 	@docker tag $(APP_NAME) $(REPOSITORY_URI):$(VERSION)_$(GIT_HASH)
 	@docker push $(REPOSITORY_URI):$(VERSION)_$(GIT_HASH)
 	@echo "Pushed container ${REPOSITORY_URI}"
 .PHONY: push-docker-container
+
+deploy-echo-service:
+	@echo "--- deploy echo service stack to aws"
+	$(eval ASSETS_BUCKET=$(shell aws cloudformation list-exports --query 'Exports[?Name==`$(APP_NAME)-assets-static-website-$(STAGE)-$(BRANCH)-BucketName`].Value' --output text))
+	$(eval REPOSITORY_URI=$(shell aws cloudformation list-exports --query 'Exports[?Name==`$(APP_NAME)-echo-service-ecr-$(STAGE)-$(BRANCH)-ECRHostname`].Value' --output text))
+	@aws cloudformation deploy \
+		--no-fail-on-empty-changeset \
+		--template-file infra/fargate/service-dedicated-alb.yaml \
+		--capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+		--stack-name $(APP_NAME)-echo-service-dedicated-alb-$(STAGE)-$(BRANCH) \
+		--tags "environment=$(STAGE)" "branch=$(BRANCH)" "service=$(APP_NAME)" "owner=$(USER)" \
+		--parameter-overrides ParentVPCStack="$(APP_NAME)-ecs-cluster-vpc-$(STAGE)-$(BRANCH)" \
+			ParentAlertStack=$(APP_NAME)-alert-$(STAGE)-$(BRANCH) \
+			ParentClusterStack=$(APP_NAME)-ecs-cluster-$(STAGE)-$(BRANCH) \
+			ParentZoneStack=$(APP_NAME)-public-zone-$(STAGE)-$(BRANCH) \
+			ParentS3StackAccessLog=$(APP_NAME)-ecs-cluster-alblogs-$(STAGE)-$(BRANCH) \
+			AppPort=8000 AppEnvironment1Key=S3_BUCKET AppEnvironment1Value=$(ASSETS_BUCKET) \
+			TaskPolicies=arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess \
+			AppImage=${REPOSITORY_URI}:$(VERSION)_$(GIT_HASH) \
+			SubDomainNameWithDot=console.
+.PHONY: deploy-echo-service

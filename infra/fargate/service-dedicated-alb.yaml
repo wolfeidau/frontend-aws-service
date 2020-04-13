@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
 Description: 'Fargate: ECS service which runs on a Fargate cluster based on fargate/cluster.yaml and uses a dedicated ALB and ACM, a @wolfeidau template'
 Metadata:
   'AWS::CloudFormation::Interface':
@@ -32,7 +33,6 @@ Metadata:
         default: 'Load Balancer Parameters'
       Parameters:
       - LoadBalancerScheme
-      - LoadBalancerCertificateArn
       - LoadBalancerIdleTimeout
       - LoadBalancerDeregistrationDelay
     - Label:
@@ -99,10 +99,6 @@ Parameters:
     AllowedValues:
     - 'internet-facing'
     - internal
-  LoadBalancerCertificateArn:
-    Description: 'Optional Amazon Resource Name (ARN) of the certificate to associate with the load balancer. If set, HTTP requests are redirected to HTTPS.'
-    Type: String
-    Default: ''
   LoadBalancerIdleTimeout:
     Description: 'The idle timeout value, in seconds.'
     Type: Number
@@ -290,7 +286,6 @@ Mappings:
       Memory: 30720
 Conditions:
   HasLoadBalancerSchemeInternal: !Equals [!Ref LoadBalancerScheme, 'internal']
-  HasLoadBalancerCertificateArn: !Not [!Equals [!Ref LoadBalancerCertificateArn, '']]
   HasAlertTopic: !Not [!Equals [!Ref ParentAlertStack, '']]
   HasZone: !Not [!Equals [!Ref ParentZoneStack, '']]
   HasS3Bucket: !Not [!Equals [!Ref ParentS3StackAccessLog, '']]
@@ -305,6 +300,18 @@ Conditions:
   HasAppEnvironment2Key: !Not [!Equals [!Ref AppEnvironment2Key, '']]
   HasAppEnvironment3Key: !Not [!Equals [!Ref AppEnvironment3Key, '']]
 Resources:
+  ServerlessACMApprover:
+    Type: 'AWS::Serverless::Application'
+    Properties:
+      Location:
+        ApplicationId: arn:aws:serverlessrepo:us-east-1:170889777468:applications/serverless-acm-approver
+        SemanticVersion: 1.1.1
+      Parameters:
+        DomainName: !Sub
+        - '${SubDomainNameWithDot}${HostedZoneName}'
+        - SubDomainNameWithDot: !Ref SubDomainNameWithDot
+          HostedZoneName: {'Fn::ImportValue': !Sub '${ParentZoneStack}-HostedZoneName'}
+        HostedZoneId: {'Fn::ImportValue': !Sub '${ParentZoneStack}-HostedZoneId'}
   RecordSet:
     Condition: HasZone
     Type: 'AWS::Route53::RecordSet'
@@ -323,6 +330,17 @@ Resources:
     Properties:
       GroupDescription: !Sub '${AWS::StackName}-load-balancer'
       VpcId: {'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'}
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+          Description: "VPC"
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+          Description: "VPC"
   LoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
@@ -383,24 +401,19 @@ Resources:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
       DefaultActions:
-      - !If
-        - HasLoadBalancerCertificateArn
-        - RedirectConfig:
-            Port: '443'
-            Protocol: HTTPS
-            StatusCode: 'HTTP_301'
-          Type: redirect
-        - TargetGroupArn: !Ref TargetGroup
-          Type: forward
+      - RedirectConfig:
+          Port: '443'
+          Protocol: HTTPS
+          StatusCode: 'HTTP_301'
+        Type: redirect
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
   HttpsListener:
-    Condition: HasLoadBalancerCertificateArn
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
       Certificates:
-      - CertificateArn: !Ref LoadBalancerCertificateArn
+      - CertificateArn: !GetAtt ServerlessACMApprover.Outputs.CertificateArn
       DefaultActions:
       - TargetGroupArn: !Ref TargetGroup
         Type: forward
@@ -411,14 +424,14 @@ Resources:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
     Properties:
       HealthCheckIntervalSeconds: 15
-      HealthCheckPath: '/'
+      HealthCheckPath: '/healthz'
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 10
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 2
       Matcher:
         HttpCode: '200-299'
-      Port: 8080 # overriden when containers are attached
+      Port: 8000 # overriden when containers are attached
       Protocol: HTTP
       TargetType: ip
       TargetGroupAttributes:
@@ -544,7 +557,7 @@ Resources:
         IpProtocol: tcp
   Service:
     Type: 'AWS::ECS::Service'
-    DependsOn: HttpListener
+    DependsOn: [HttpListener, HttpsListener, ServerlessACMApprover]
     Properties:
       Cluster: {'Fn::ImportValue': !Sub '${ParentClusterStack}-Cluster'}
       DeploymentConfiguration:

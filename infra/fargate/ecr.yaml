@@ -15,9 +15,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: "ecs: Provisions an ECR repository with an expiration policy, a @wolfeidau template."
 Parameters:
-  AppName:
-    Type: String
-    Description: The application name
   TagPrefix:
     Description: The tag prefix used to retain images.
     Type: String
@@ -77,3 +74,8 @@ Outputs:
     Value: !GetAtt ECR.Arn
     Export:
       Name: !Sub '${AWS::StackName}-ECRArn'
+  ECRHostname:
+    Description: ECR Repository Hostname
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECR}"
+    Export:
+      Name: !Sub '${AWS::StackName}-ECRHostname'      
