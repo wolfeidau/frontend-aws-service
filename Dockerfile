@@ -6,6 +6,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY ./cmd ./cmd
+COPY ./pkg ./pkg
 RUN CGO_ENABLED=0 go build -a -installsuffix cgo -o service ./cmd/echo-aws-service
 
 FROM debian

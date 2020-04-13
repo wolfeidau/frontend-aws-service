@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"io/ioutil"
+	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/labstack/echo/v4"
@@ -42,8 +43,12 @@ func main() {
 	e.Logger.SetOutput(ioutil.Discard)
 	e.Logger.SetLevel(echolog.OFF)
 
-	// e.Use(echomiddleware.RequestID())
+	e.GET("/healthz", func(c echo.Context) error {
+		return c.JSON(200, map[string]string{"msg": "ok", "version": version})
+	})
+
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Skipper: skipHealthz,
 		Format: `{"time":"${time_rfc3339_nano}","id":"${id}","remote_ip":"${remote_ip}",` +
 			`"host":"${host}","method":"${method}","uri":"${uri}","user_agent":"${user_agent}",` +
 			`"status":${status},"error":"${error}","latency":${latency},"latency_human":"${latency_human}"` +
@@ -52,13 +57,19 @@ func main() {
 		HeaderXRequestID: "X-Amzn-Trace-Id",
 	}))
 
-	e.Pre(echomiddleware.AddTrailingSlash()) // required to ensure trailing slash is appended
+	e.Pre(echomiddleware.AddTrailingSlashWithConfig(
+		echomiddleware.TrailingSlashConfig{
+			Skipper: skipHealthz,
+		},
+	)) // required to ensure trailing slash is appended
 	e.Use(spa.IndexWithConfig(spa.IndexConfig{
+		Skipper:       skipHealthz,
 		DomainName:    cli.DomainName,
 		SubDomainMode: true,
 	}))
 
 	fs := s3middleware.New(s3middleware.FilesConfig{
+		Skipper:          skipHealthz,
 		HeaderXRequestID: "X-Amzn-Trace-Id",
 		Summary: func(ctx context.Context, data map[string]interface{}) {
 			log.Info().Fields(data).Msg("processed s3 request")
@@ -68,13 +79,16 @@ func main() {
 		},
 	})
 
-	e.GET("/healthz", func(c echo.Context) error {
-		return c.JSON(200, map[string]string{"msg": "ok", "version": version})
-	})
-
 	// serve static files from the supplied bucket
 	e.Use(fs.StaticBucket(cli.S3Bucket))
 
 	log.Info().Str("addr", cli.Address).Msg("starting listener")
 	log.Fatal().Err(e.Start(cli.Address)).Msg("failed to start echo listener")
+}
+
+func skipHealthz(c echo.Context) bool {
+	if strings.HasPrefix(c.Request().URL.Path, "/healthz") {
+		return true
+	}
+	return false
 }
