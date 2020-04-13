@@ -1,0 +1,12 @@
+.idea/
+/vendor
+.envrc
+/dist
+/bin
+node_modules
+build
+/certs
+/testing
+!/mocks/gen.go
+/mocks
+coverage.txt
