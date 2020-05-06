@@ -16,17 +16,33 @@ import (
 	"github.com/wolfeidau/frontend-aws-service/pkg/middleware"
 )
 
+// A flag with a hook that, if triggered, will set the debug loggers output to stdout.
+type debugFlag bool
+
+// BeforeApply hook used by kong
+func (d debugFlag) BeforeApply() error {
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	return nil
+}
+
 var (
 	version = "unknown"
 	cli     struct {
-		Debug      bool   `help:"Enable debug logging." env:"DEBUG"`
-		DomainName string `help:"The domain which is served." env:"DOMAIN_NAME"`
-		S3Bucket   string `help:"The s3 bucket used to serve files." env:"S3_BUCKET"`
-		Address    string `help:"The bind address." env:"ADDR" default:":8000"`
+		Debug      debugFlag `help:"Enable debug logging." env:"DEBUG"`
+		Tracing    bool      `help:"Enable tracing using honeycomb." env:"TRACING"`
+		Stage      string    `help:"The stage this is deployed." env:"STAGE"`
+		Branch     string    `help:"The branch this is deployed." env:"BRANCH"`
+		AppName    string    `help:"The application name under which this service is deployed." env:"APP_NAME"`
+		DomainName string    `help:"The domain which is served." env:"DOMAIN_NAME"`
+		S3Bucket   string    `help:"The s3 bucket used to serve files." env:"S3_BUCKET"`
+		Address    string    `help:"The bind address." env:"ADDR" default:":8000"`
 	}
 )
 
 func main() {
+	// init the logger
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
 	kong.Parse(&cli)
 
 	log.Info().Str("version", version).Msg("starting frontendproxy")
@@ -42,6 +58,8 @@ func main() {
 	// shut down all the default output of echo
 	e.Logger.SetOutput(ioutil.Discard)
 	e.Logger.SetLevel(echolog.OFF)
+
+	e.Use(echomiddleware.Logger())
 
 	e.GET("/healthz", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"msg": "ok", "version": version})

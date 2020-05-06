@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/valyala/fasttemplate"
 )
@@ -58,8 +60,13 @@ type (
 		// HeaderXRequestID Name of the request id header to include in callbacks, defaults to echo.HeaderXRequestID
 		HeaderXRequestID string
 
+		// Output is a writer where logs in JSON format are written.
+		// Optional. Default value os.Stdout.
+		Output io.Writer
+
 		template *fasttemplate.Template
 		pool     *sync.Pool
+		log      zerolog.Logger
 	}
 )
 
@@ -92,6 +99,12 @@ func LoggerWithConfig(config LoggerConfig) echo.MiddlewareFunc {
 	}
 	if config.HeaderXRequestID == "" {
 		config.HeaderXRequestID = echo.HeaderXRequestID
+	}
+	// setup a logger using the provided writer
+	if config.Output != nil {
+		config.log = zerolog.New(config.Output)
+	} else {
+		config.log = log.Logger
 	}
 
 	config.template = fasttemplate.New(config.Format, "${", "}")
@@ -201,10 +214,11 @@ func LoggerWithConfig(config LoggerConfig) echo.MiddlewareFunc {
 			f := map[string]interface{}{}
 			err = json.Unmarshal(buf.Bytes(), &f)
 			if err != nil {
+				fmt.Println(err)
 				return
 			}
 
-			log.Info().Fields(f).Msg("requestlog")
+			config.log.Info().Fields(f).Msg("requestlog")
 
 			return
 		}

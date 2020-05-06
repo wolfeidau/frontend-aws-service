@@ -13,7 +13,7 @@ bin/hey:
 	env GOBIN=$$PWD/bin GO111MODULE=on go install github.com/rakyll/hey
 
 watch: bin/reflex
-	bin/reflex -R '^static/' -r '(.go$$)|(.html$$)' -s -- go run cmd/echo-aws-service/main.go
+	bin/reflex -R '^static/' -r '(.go$$)|(.html$$)' -s -- go run cmd/frontend-aws-service/main.go
 .PHONY: watch
 
 
