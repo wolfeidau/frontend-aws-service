@@ -16,7 +16,6 @@ env:
 jobs:
   push:
     # Ensure build job passes before pushing image.
-    needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:
