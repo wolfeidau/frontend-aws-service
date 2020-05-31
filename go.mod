@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/alecthomas/kong v0.2.4
+	github.com/jandelgado/gcov2lcov v1.0.2 // indirect
 	github.com/labstack/echo/v4 v4.1.16
 	github.com/labstack/gommon v0.3.0
 	github.com/rs/zerolog v1.18.0

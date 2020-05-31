@@ -16,10 +16,11 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLogger(t *testing.T) {
+	assert := require.New(t)
 	// Note: Just for the test coverage, not a real test.
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -30,7 +31,8 @@ func TestLogger(t *testing.T) {
 	})
 
 	// Status 2xx
-	h(c)
+	err := h(c)
+	assert.NoError(err)
 
 	// Status 3xx
 	rec = httptest.NewRecorder()
@@ -38,7 +40,8 @@ func TestLogger(t *testing.T) {
 	h = Logger()(func(c echo.Context) error {
 		return c.String(http.StatusTemporaryRedirect, "test")
 	})
-	h(c)
+	err = h(c)
+	assert.NoError(err)
 
 	// Status 4xx
 	rec = httptest.NewRecorder()
@@ -46,7 +49,8 @@ func TestLogger(t *testing.T) {
 	h = Logger()(func(c echo.Context) error {
 		return c.String(http.StatusNotFound, "test")
 	})
-	h(c)
+	err = h(c)
+	assert.NoError(err)
 
 	// Status 5xx with empty path
 	req = httptest.NewRequest(http.MethodGet, "/", nil)
@@ -55,10 +59,13 @@ func TestLogger(t *testing.T) {
 	h = Logger()(func(c echo.Context) error {
 		return errors.New("error")
 	})
-	h(c)
+	err = h(c)
+	assert.NoError(err)
 }
 
 func TestLoggerIPAddress(t *testing.T) {
+	assert := require.New(t)
+
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -72,22 +79,27 @@ func TestLoggerIPAddress(t *testing.T) {
 
 	// With X-Real-IP
 	req.Header.Add(echo.HeaderXRealIP, ip)
-	h(c)
-	assert.Contains(t, buf.String(), ip)
+	err := h(c)
+	assert.NoError(err)
+	assert.Contains(buf.String(), ip)
 
 	// With X-Forwarded-For
 	buf.Reset()
 	req.Header.Del(echo.HeaderXRealIP)
 	req.Header.Add(echo.HeaderXForwardedFor, ip)
-	h(c)
-	assert.Contains(t, buf.String(), ip)
+	err = h(c)
+	assert.NoError(err)
+	assert.Contains(buf.String(), ip)
 
 	buf.Reset()
-	h(c)
-	assert.Contains(t, buf.String(), ip)
+	err = h(c)
+	assert.NoError(err)
+	assert.Contains(buf.String(), ip)
 }
 
 func TestLoggerTemplate(t *testing.T) {
+	assert := require.New(t)
+
 	buf := new(bytes.Buffer)
 
 	e := echo.New()
@@ -142,11 +154,13 @@ func TestLoggerTemplate(t *testing.T) {
 	fmt.Println(buf.String())
 
 	for token, present := range cases {
-		assert.True(t, strings.Contains(buf.String(), token) == present, "Case: "+token)
+		assert.True(strings.Contains(buf.String(), token) == present, "Case: "+token)
 	}
 }
 
 func TestLoggerCustomTimestamp(t *testing.T) {
+	assert := require.New(t)
+
 	buf := new(bytes.Buffer)
 	customTimeFormat := "2006-01-02 15:04:05.00000"
 	e := echo.New()
@@ -169,10 +183,10 @@ func TestLoggerCustomTimestamp(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	var objs map[string]*json.RawMessage
-	if err := json.Unmarshal([]byte(buf.String()), &objs); err != nil {
+	if err := json.Unmarshal(buf.Bytes(), &objs); err != nil {
 		panic(err)
 	}
 	loggedTime := *(*string)(unsafe.Pointer(objs["time"]))
 	_, err := time.Parse(customTimeFormat, loggedTime)
-	assert.Error(t, err)
+	assert.Error(err)
 }

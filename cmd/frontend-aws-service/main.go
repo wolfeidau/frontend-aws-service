@@ -15,25 +15,16 @@ import (
 	"github.com/rs/zerolog/log"
 	s3middleware "github.com/wolfeidau/echo-s3-middleware"
 	spa "github.com/wolfeidau/echo-spa-middleware"
-	"github.com/wolfeidau/frontend-aws-service/pkg/app"
-	"github.com/wolfeidau/frontend-aws-service/pkg/middleware"
+	"github.com/wolfeidau/frontend-aws-service/internal/flags"
+	"github.com/wolfeidau/frontend-aws-service/internal/middleware"
 )
 
 var (
-	version = fmt.Sprintf("%s_%s", app.Commit, app.BuildDate)
+	buildDate = "unknown"
+	commit    = "unknown"
+	version   = fmt.Sprintf("%s_%s", commit, buildDate)
 
-	cli struct {
-		Version    kong.VersionFlag
-		Debug      bool   `help:"Enable debug logging." env:"DEBUG"`
-		Pretty     bool   `help:"Enable logging with colors." env:"PRETTY"`
-		Tracing    bool   `help:"Enable tracing using honeycomb." env:"TRACING"`
-		Stage      string `help:"The stage this is deployed." env:"STAGE"`
-		Branch     string `help:"The branch this is deployed." env:"BRANCH"`
-		AppName    string `help:"The application name under which this service is deployed." env:"APP_NAME"`
-		DomainName string `help:"The domain which is served." env:"DOMAIN_NAME"`
-		S3Bucket   string `help:"The s3 bucket used to serve files." env:"S3_BUCKET"`
-		Address    string `help:"The bind address." env:"ADDR" default:":8000"`
-	}
+	cli = new(flags.Config)
 )
 
 func main() {
@@ -41,7 +32,7 @@ func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	kong.Parse(
-		&cli,
+		cli,
 		kong.Name("frontend-proxy"),
 		kong.Vars{"version": version}, // bind a var for version
 	)
@@ -111,8 +102,5 @@ func main() {
 }
 
 func skipHealthz(c echo.Context) bool {
-	if strings.HasPrefix(c.Request().URL.Path, "/healthz") {
-		return true
-	}
-	return false
+	return strings.HasPrefix(c.Request().URL.Path, "/healthz")
 }

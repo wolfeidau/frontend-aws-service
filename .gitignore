@@ -9,4 +9,4 @@ build
 /testing
 !/mocks/gen.go
 /mocks
-coverage.txt
+coverage.*

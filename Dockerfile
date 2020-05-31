@@ -2,12 +2,15 @@ FROM golang:latest as builder
 
 MAINTAINER Mark Wolfe <mark@wolfe.id.au>
 
+ARG BUILD_DATE
+ARG GIT_HASH
+
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+COPY ./vendor ./vendor
 COPY ./cmd ./cmd
-COPY ./pkg ./pkg
-RUN CGO_ENABLED=0 go build -a -installsuffix cgo -trimpath -o service ./cmd/frontend-aws-service
+COPY ./internal ./internal
+RUN CGO_ENABLED=0 go build -a -installsuffix cgo -ldflags='-w -s -X main.buildDate=${BUILD_DATE} -X main.commit=${GIT_HASH}' -trimpath -o service ./cmd/frontend-aws-service
 
 FROM debian
 
