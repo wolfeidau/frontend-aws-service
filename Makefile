@@ -6,6 +6,9 @@ GIT_HASH := $(shell git rev-parse --short HEAD)
 
 APP_NAME ?= frontend-aws-service
 
+default: deploy-common deploy-assets deploy-cluster deploy-echo-service-ecr push-docker-container deploy-echo-service
+.PHONY: default
+
 bin/reflex:
 	env GOBIN=$$PWD/bin GO111MODULE=on go install github.com/cespare/reflex
 
@@ -15,7 +18,6 @@ bin/hey:
 watch: bin/reflex
 	bin/reflex -R '^static/' -r '(.go$$)|(.html$$)' -s -- go run cmd/frontend-aws-service/main.go
 .PHONY: watch
-
 
 deploy-common:
 	@echo "--- deploy alert stack to aws"
@@ -57,7 +59,7 @@ deploy-assets:
 		--parameter-overrides ParentZoneStack=$(APP_NAME)-public-zone-$(STAGE)-$(BRANCH) \
 			ParentAlertStack=$(APP_NAME)-alert-$(STAGE)-$(BRANCH) \
 			ParentS3StackAccessLog=$(APP_NAME)-cflogs-s3-$(STAGE)-$(BRANCH) \
-			DefaultRootObject="" SubDomainNameWithDot=assets. CertificateType=CreateAcmCertificate
+			DefaultRootObject="" SubDomainNameWithDot=assets. CertificateType=CreateAcmCertificate EnableRedirectSubDomainName=true
 .PHONY: deploy-assets
 
 deploy-cluster:

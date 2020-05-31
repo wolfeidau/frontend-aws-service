@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/alecthomas/kong"
@@ -13,29 +15,24 @@ import (
 	"github.com/rs/zerolog/log"
 	s3middleware "github.com/wolfeidau/echo-s3-middleware"
 	spa "github.com/wolfeidau/echo-spa-middleware"
+	"github.com/wolfeidau/frontend-aws-service/pkg/app"
 	"github.com/wolfeidau/frontend-aws-service/pkg/middleware"
 )
 
-// A flag with a hook that, if triggered, will set the debug loggers output to stdout.
-type debugFlag bool
-
-// BeforeApply hook used by kong
-func (d debugFlag) BeforeApply() error {
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	return nil
-}
-
 var (
-	version = "unknown"
-	cli     struct {
-		Debug      debugFlag `help:"Enable debug logging." env:"DEBUG"`
-		Tracing    bool      `help:"Enable tracing using honeycomb." env:"TRACING"`
-		Stage      string    `help:"The stage this is deployed." env:"STAGE"`
-		Branch     string    `help:"The branch this is deployed." env:"BRANCH"`
-		AppName    string    `help:"The application name under which this service is deployed." env:"APP_NAME"`
-		DomainName string    `help:"The domain which is served." env:"DOMAIN_NAME"`
-		S3Bucket   string    `help:"The s3 bucket used to serve files." env:"S3_BUCKET"`
-		Address    string    `help:"The bind address." env:"ADDR" default:":8000"`
+	version = fmt.Sprintf("%s_%s", app.Commit, app.BuildDate)
+
+	cli struct {
+		Version    kong.VersionFlag
+		Debug      bool   `help:"Enable debug logging." env:"DEBUG"`
+		Pretty     bool   `help:"Enable logging with colors." env:"PRETTY"`
+		Tracing    bool   `help:"Enable tracing using honeycomb." env:"TRACING"`
+		Stage      string `help:"The stage this is deployed." env:"STAGE"`
+		Branch     string `help:"The branch this is deployed." env:"BRANCH"`
+		AppName    string `help:"The application name under which this service is deployed." env:"APP_NAME"`
+		DomainName string `help:"The domain which is served." env:"DOMAIN_NAME"`
+		S3Bucket   string `help:"The s3 bucket used to serve files." env:"S3_BUCKET"`
+		Address    string `help:"The bind address." env:"ADDR" default:":8000"`
 	}
 )
 
@@ -43,9 +40,11 @@ func main() {
 	// init the logger
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
-	kong.Parse(&cli)
-
-	log.Info().Str("version", version).Msg("starting frontendproxy")
+	kong.Parse(
+		&cli,
+		kong.Name("frontend-proxy"),
+		kong.Vars{"version": version}, // bind a var for version
+	)
 
 	e := echo.New()
 
@@ -54,6 +53,12 @@ func main() {
 	} else {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
+
+	if cli.Pretty {
+		log.Logger = log.With().Caller().Stack().Logger().Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
+
+	log.Info().Str("version", version).Msg("starting frontend-proxy")
 
 	// shut down all the default output of echo
 	e.Logger.SetOutput(ioutil.Discard)
@@ -88,6 +93,7 @@ func main() {
 
 	fs := s3middleware.New(s3middleware.FilesConfig{
 		Skipper:          skipHealthz,
+		SPA:              true,
 		HeaderXRequestID: "X-Amzn-Trace-Id",
 		Summary: func(ctx context.Context, data map[string]interface{}) {
 			log.Info().Fields(data).Msg("processed s3 request")

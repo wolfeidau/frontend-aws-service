@@ -130,7 +130,7 @@ Resources:
     Properties:
       Location:
         ApplicationId: arn:aws:serverlessrepo:us-east-1:170889777468:applications/serverless-acm-approver
-        SemanticVersion: 1.1.1
+        SemanticVersion: 1.2.0
       Parameters:
         DomainName: !Sub
         - '${SubDomainNameWithDot}${HostedZoneName}'
@@ -138,6 +138,13 @@ Resources:
           HostedZoneName: {'Fn::ImportValue': !Sub '${ParentZoneStack}-HostedZoneName'}
         HostedZoneId: {'Fn::ImportValue': !Sub '${ParentZoneStack}-HostedZoneId'}
         Region: us-east-1
+        SubjectAlternativeNames: !If
+        - HasRedirectDomainName
+        - !Sub
+          - '${RedirectSubDomainNameWithDot}${HostedZoneName}'
+          - RedirectSubDomainNameWithDot: !Ref RedirectSubDomainNameWithDot
+            HostedZoneName: {'Fn::ImportValue': !Sub '${ParentZoneStack}-HostedZoneName'}
+        - ''
   S3Bucket:
     Type: 'AWS::S3::Bucket'
     Properties:
